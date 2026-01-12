@@ -60,6 +60,15 @@ local M = {}
 -- @field pushd_cmd string Command to push directory onto stack (e.g., 'pushd' for bash/zsh)
 -- @field popd_cmd string Command to pop directory from stack (e.g., 'popd' for bash/zsh)
 
+--- ClaudeCodeInline class for inline editing configuration
+-- @table ClaudeCodeInline
+-- @field enable boolean Enable inline editing feature
+-- @field keymaps table Keymaps for inline editing
+-- @field keymaps.prompt string|boolean Keymap to open prompt dialog
+-- @field keymaps.toggle_terminal string|boolean Keymap to toggle terminal visibility
+-- @field prompt_title string Title for the input dialog
+-- @field startup_delay number Delay in ms before sending first prompt
+
 --- ClaudeCodeConfig class for main configuration
 -- @table ClaudeCodeConfig
 -- @field window ClaudeCodeWindow Terminal window settings
@@ -69,6 +78,7 @@ local M = {}
 -- @field command string Command used to launch Claude Code
 -- @field command_variants ClaudeCodeCommandVariants Command variants configuration
 -- @field keymaps ClaudeCodeKeymaps Keymaps configuration
+-- @field inline ClaudeCodeInline Inline editing configuration
 
 --- Default configuration options
 --- @type ClaudeCodeConfig
@@ -133,6 +143,16 @@ M.default_config = {
     },
     window_navigation = true, -- Enable window navigation keymaps (<C-h/j/k/l>)
     scrolling = true, -- Enable scrolling keymaps (<C-f/b>) for page up/down
+  },
+  -- Inline editing settings
+  inline = {
+    enable = true, -- Enable inline editing feature
+    keymaps = {
+      prompt = '<leader>ci', -- Normal mode keymap to open prompt dialog
+      toggle_terminal = '<leader>ct', -- Normal mode keymap to toggle terminal visibility
+    },
+    prompt_title = 'Claude Code', -- Title for the input dialog
+    startup_delay = 1000, -- Delay in ms before sending first prompt (Claude CLI needs time to initialize)
   },
 }
 
@@ -381,6 +401,42 @@ local function validate_command_variants_config(command_variants)
   return true, nil
 end
 
+--- Validate inline configuration
+--- @param inline table Inline configuration
+--- @return boolean valid
+--- @return string? error_message
+local function validate_inline_config(inline)
+  if type(inline) ~= 'table' then
+    return false, 'inline config must be a table'
+  end
+
+  if type(inline.enable) ~= 'boolean' then
+    return false, 'inline.enable must be a boolean'
+  end
+
+  if type(inline.keymaps) ~= 'table' then
+    return false, 'inline.keymaps must be a table'
+  end
+
+  if not (inline.keymaps.prompt == false or type(inline.keymaps.prompt) == 'string') then
+    return false, 'inline.keymaps.prompt must be a string or false'
+  end
+
+  if not (inline.keymaps.toggle_terminal == false or type(inline.keymaps.toggle_terminal) == 'string') then
+    return false, 'inline.keymaps.toggle_terminal must be a string or false'
+  end
+
+  if type(inline.prompt_title) ~= 'string' then
+    return false, 'inline.prompt_title must be a string'
+  end
+
+  if type(inline.startup_delay) ~= 'number' or inline.startup_delay < 0 then
+    return false, 'inline.startup_delay must be a non-negative number'
+  end
+
+  return true, nil
+end
+
 --- Validate configuration options
 --- @param config ClaudeCodeConfig
 --- @return boolean valid
@@ -431,6 +487,12 @@ local function validate_config(config)
 
   -- Validate keymaps settings
   valid, err = validate_keymaps_config(config.keymaps)
+  if not valid then
+    return false, err
+  end
+
+  -- Validate inline settings
+  valid, err = validate_inline_config(config.inline)
   if not valid then
     return false, err
   end

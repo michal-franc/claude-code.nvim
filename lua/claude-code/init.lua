@@ -22,6 +22,7 @@ local commands = require('claude-code.commands')
 local keymaps = require('claude-code.keymaps')
 local file_refresh = require('claude-code.file_refresh')
 local terminal = require('claude-code.terminal')
+local inline = require('claude-code.inline')
 local git = require('claude-code.git')
 local version = require('claude-code.version')
 
@@ -103,6 +104,24 @@ end
 --- Version information
 M.version = version
 
+--- Inline editing module
+M.inline = inline
+
+--- Open the inline prompt dialog
+function M.inline_prompt()
+  inline.open_prompt(M, M.config, git)
+end
+
+--- Toggle the inline terminal visibility
+function M.inline_toggle()
+  inline.toggle_terminal(M, M.config, git)
+end
+
+--- Clear the current inline session
+function M.inline_clear()
+  inline.clear_session(M, M.config, git)
+end
+
 --- Setup function for the plugin
 --- @param user_config? table User configuration table (optional)
 function M.setup(user_config)
@@ -121,6 +140,11 @@ function M.setup(user_config)
 
   -- Register keymaps
   keymaps.register_keymaps(M, M.config)
+
+  -- Set up inline editing
+  if M.config.inline.enable then
+    inline.setup(M, M.config)
+  end
 end
 
 return M

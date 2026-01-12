@@ -412,4 +412,11 @@ function M.toggle(claude_code, config, git)
   end
 end
 
+-- Export helper functions for use by inline module
+M.create_float = create_float
+M.create_split = create_split
+M.build_command_with_git_root = build_command_with_git_root
+M.configure_window_options = configure_window_options
+M.is_valid_terminal_buffer = is_valid_terminal_buffer
+
 return M

@@ -52,6 +52,27 @@ function M.register_keymaps(claude_code, config)
     end
   end
 
+  -- Register inline editing keymaps if enabled
+  if config.inline and config.inline.enable then
+    if config.inline.keymaps and config.inline.keymaps.prompt then
+      vim.api.nvim_set_keymap(
+        'n',
+        config.inline.keymaps.prompt,
+        [[<cmd>ClaudeCodeInline<CR>]],
+        vim.tbl_extend('force', map_opts, { desc = 'Claude Code: Inline Prompt' })
+      )
+    end
+
+    if config.inline.keymaps and config.inline.keymaps.toggle_terminal then
+      vim.api.nvim_set_keymap(
+        'n',
+        config.inline.keymaps.toggle_terminal,
+        [[<cmd>ClaudeCodeInlineToggle<CR>]],
+        vim.tbl_extend('force', map_opts, { desc = 'Claude Code: Toggle Inline Terminal' })
+      )
+    end
+  end
+
   -- Register with which-key if it's available
   vim.defer_fn(function()
     local status_ok, which_key = pcall(require, 'which-key')
@@ -79,6 +100,22 @@ function M.register_keymaps(claude_code, config)
               { keymap, desc = 'Claude Code: ' .. capitalized_name, icon = '🤖' },
             }
           end
+        end
+      end
+
+      -- Register inline keymaps with which-key
+      if config.inline and config.inline.enable and config.inline.keymaps then
+        if config.inline.keymaps.prompt then
+          which_key.add {
+            mode = 'n',
+            { config.inline.keymaps.prompt, desc = 'Claude Code: Inline Prompt', icon = '🤖' },
+          }
+        end
+        if config.inline.keymaps.toggle_terminal then
+          which_key.add {
+            mode = 'n',
+            { config.inline.keymaps.toggle_terminal, desc = 'Claude Code: Toggle Inline Terminal', icon = '🤖' },
+          }
         end
       end
     end
