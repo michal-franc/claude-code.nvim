@@ -272,6 +272,28 @@ describe('inline', function()
     end)
   end)
 
+  describe('format_response', function()
+    it('should wrap response in Claude code block', function()
+      local response = 'Hello! How can I help you today?'
+      local formatted = inline.format_response(response)
+
+      assert.are.equal('```Claude\nHello! How can I help you today?\n```', formatted)
+    end)
+
+    it('should handle multiline responses', function()
+      local response = 'Here is the code:\n\nfunction hello()\n  print("Hello")\nend'
+      local formatted = inline.format_response(response)
+
+      local expected = '```Claude\nHere is the code:\n\nfunction hello()\n  print("Hello")\nend\n```'
+      assert.are.equal(expected, formatted)
+    end)
+
+    it('should handle empty response', function()
+      local formatted = inline.format_response('')
+      assert.are.equal('```Claude\n\n```', formatted)
+    end)
+  end)
+
   describe('spinner timer', function()
     local test_bufnr
 

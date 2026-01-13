@@ -577,6 +577,13 @@ local function is_working_indicator(line)
   return false
 end
 
+--- Format Claude's response for insertion into buffer
+--- @param response string The raw response text
+--- @return string formatted The formatted response wrapped in Claude code block
+function M.format_response(response)
+  return '```Claude\n' .. response .. '\n```'
+end
+
 --- Get response from terminal buffer
 --- @param session InlineSession The inline session
 --- @param prompt string The original prompt to help locate the response
@@ -788,7 +795,7 @@ function M.start_response_monitor(session, request, config)
         -- Claude is done, get response
         local response = M.get_terminal_response(session, request.prompt)
         if response then
-          M.replace_placeholder(request, response)
+          M.replace_placeholder(request, M.format_response(response))
         else
           M.replace_placeholder(request, '-- [No response from Claude]')
         end
