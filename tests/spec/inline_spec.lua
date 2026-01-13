@@ -78,6 +78,34 @@ local MOCK_TERMINAL_WORKING = {
   '',
 }
 
+-- Multiple conversation turns - should return only the LATEST response
+local MOCK_TERMINAL_MULTIPLE_TURNS = {
+  '',
+  '  Claude Code v2.1.5',
+  '  Opus 4.5 · Claude Max',
+  '  /home/mfranc',
+  '',
+  '> say hello',
+  '',
+  '● Hello! How can I help you today?',
+  '',
+  '>',
+  '',
+  '> say hello hello',
+  '',
+  '● Hello hello!',
+  '',
+  '>',
+  '',
+  '> say hello',
+  '',
+  '● Hello!',
+  '',
+  '>',
+  '',
+  'mfranc@mfranc-MS-7E06 mfranc git:(master*) [Opus 4.5]',
+}
+
 describe('inline', function()
   describe('_internal.strip_ansi', function()
     it('should remove ANSI color codes', function()
@@ -229,6 +257,18 @@ describe('inline', function()
       local mock_session = { bufnr = 99999 }
       local response = inline.get_terminal_response(mock_session, 'test')
       assert.is_nil(response)
+    end)
+
+    it('should return only the latest response with multiple conversation turns', function()
+      bufnr = create_mock_buffer(MOCK_TERMINAL_MULTIPLE_TURNS)
+      local mock_session = { bufnr = bufnr }
+
+      -- Same prompt "say hello" appears 3 times, should get the LATEST response
+      local response = inline.get_terminal_response(mock_session, 'say hello')
+
+      assert.is_not_nil(response)
+      -- Should be "Hello!" (the third/latest response), NOT "Hello! How can I help you today?" (first)
+      assert.are.equal('Hello!', response)
     end)
   end)
 end)

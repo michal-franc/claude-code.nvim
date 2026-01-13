@@ -422,7 +422,11 @@ local function validate_inline_config(inline)
     return false, 'inline.keymaps.prompt must be a string or false'
   end
 
-  if not (inline.keymaps.toggle_terminal == false or type(inline.keymaps.toggle_terminal) == 'string') then
+  if
+    not (
+      inline.keymaps.toggle_terminal == false or type(inline.keymaps.toggle_terminal) == 'string'
+    )
+  then
     return false, 'inline.keymaps.toggle_terminal must be a string or false'
   end
 

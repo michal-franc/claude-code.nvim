@@ -32,22 +32,23 @@ M.pending_requests = {}
 --- Placeholder text shown while waiting for Claude
 M.placeholder_text = '-- [Claude is thinking...]'
 
-
 --- Strip ANSI escape codes from a string
 --- @param str string The string to strip
 --- @return string stripped The string without ANSI codes
 local function strip_ansi(str)
-  if not str then return '' end
+  if not str then
+    return ''
+  end
   -- Remove ANSI escape sequences
-  str = str:gsub('\027%[%d*;?%d*;?%d*;?%d*;?%d*m', '')  -- Color codes
-  str = str:gsub('\027%[%d*[ABCDEFGJKST]', '')  -- Cursor movement
-  str = str:gsub('\027%[%?%d*[hl]', '')  -- Mode changes
-  str = str:gsub('\027%]%d*;[^\007]*\007', '')  -- OSC sequences
-  str = str:gsub('\027%[%d*;%d*[Hf]', '')  -- Cursor position
-  str = str:gsub('\027%[[%d;]*m', '')  -- SGR sequences
-  str = str:gsub('\027%[K', '')  -- Erase line
-  str = str:gsub('\027', '')  -- Any remaining escapes
-  str = str:gsub('%c', '')  -- Control characters
+  str = str:gsub('\027%[%d*;?%d*;?%d*;?%d*;?%d*m', '') -- Color codes
+  str = str:gsub('\027%[%d*[ABCDEFGJKST]', '') -- Cursor movement
+  str = str:gsub('\027%[%?%d*[hl]', '') -- Mode changes
+  str = str:gsub('\027%]%d*;[^\007]*\007', '') -- OSC sequences
+  str = str:gsub('\027%[%d*;%d*[Hf]', '') -- Cursor position
+  str = str:gsub('\027%[[%d;]*m', '') -- SGR sequences
+  str = str:gsub('\027%[K', '') -- Erase line
+  str = str:gsub('\027', '') -- Any remaining escapes
+  str = str:gsub('%c', '') -- Control characters
   return str
 end
 
@@ -114,7 +115,7 @@ local function create_hidden_terminal(config, git, instance_id)
     relative = 'editor',
     width = 80,
     height = 24,
-    row = 9999,  -- Position far off-screen
+    row = 9999, -- Position far off-screen
     col = 9999,
     style = 'minimal',
     focusable = true,
@@ -310,7 +311,7 @@ end
 function M.insert_placeholder(prompt)
   local bufnr = vim.api.nvim_get_current_buf()
   local cursor = vim.api.nvim_win_get_cursor(0)
-  local row = cursor[1] - 1  -- 0-indexed
+  local row = cursor[1] - 1 -- 0-indexed
 
   -- Insert placeholder text on a new line below cursor
   vim.api.nvim_buf_set_lines(bufnr, row + 1, row + 1, false, { M.placeholder_text })
@@ -360,11 +361,19 @@ local function is_terminal_artifact(line)
   for char in trimmed:gmatch('[%z\1-\127\194-\244][\128-\191]*') do
     local is_box = false
     for _, bc in ipairs(box_chars) do
-      if char == bc then is_box = true; has_decorative = true; break end
+      if char == bc then
+        is_box = true
+        has_decorative = true
+        break
+      end
     end
     if not is_box then
       for _, cc in ipairs(cursor_chars) do
-        if char == cc then is_box = true; has_decorative = true; break end
+        if char == cc then
+          is_box = true
+          has_decorative = true
+          break
+        end
       end
     end
     if not is_box and char ~= ' ' then
@@ -387,11 +396,17 @@ local function is_terminal_artifact(line)
       for char in rest:gmatch('[%z\1-\127\194-\244][\128-\191]*') do
         local is_dec = false
         for _, bc in ipairs(box_chars) do
-          if char == bc then is_dec = true; break end
+          if char == bc then
+            is_dec = true
+            break
+          end
         end
         if not is_dec then
           for _, cc in ipairs(cursor_chars) do
-            if char == cc then is_dec = true; break end
+            if char == cc then
+              is_dec = true
+              break
+            end
           end
         end
         if not is_dec and char ~= ' ' then
@@ -435,25 +450,37 @@ local function is_claude_prompt(line)
     return false
   end
   -- Shell prompts contain @, $, ~, paths, git:, etc - skip these
-  if cleaned:match('@') or
-     cleaned:match('%$') or
-     cleaned:match('~') or
-     cleaned:match('git:') or
-     cleaned:match('/') then
+  if
+    cleaned:match('@')
+    or cleaned:match('%$')
+    or cleaned:match('~')
+    or cleaned:match('git:')
+    or cleaned:match('/')
+  then
     return false
   end
   -- Claude's prompt is just > or ❯, possibly with ) for the style
   local trimmed = cleaned:match('^%s*(.-)%s*$')
   -- Check for various Claude prompt patterns (UTF-8 chars need separate checks)
   -- Just >
-  if trimmed == '>' then return true end
+  if trimmed == '>' then
+    return true
+  end
   -- Just ❯
-  if trimmed == '❯' then return true end
+  if trimmed == '❯' then
+    return true
+  end
   -- Just )
-  if trimmed == ')' then return true end
+  if trimmed == ')' then
+    return true
+  end
   -- > ) or ❯ )
-  if trimmed:match('^>%s*%)$') then return true end
-  if trimmed:match('^❯%s*%)$') then return true end
+  if trimmed:match('^>%s*%)$') then
+    return true
+  end
+  if trimmed:match('^❯%s*%)$') then
+    return true
+  end
   return false
 end
 
@@ -462,9 +489,15 @@ end
 --- @return boolean is_working True if Claude is still processing
 local function is_working_indicator(line)
   local cleaned = strip_ansi(line)
-  if cleaned:match('^%+') then return true end  -- + at start (working indicator)
-  if cleaned:match('interrupt') then return true end
-  if cleaned:match('%.%.%.') then return true end  -- ...
+  if cleaned:match('^%+') then
+    return true
+  end -- + at start (working indicator)
+  if cleaned:match('interrupt') then
+    return true
+  end
+  if cleaned:match('%.%.%.') then
+    return true
+  end -- ...
   return false
 end
 
@@ -478,11 +511,7 @@ function M.get_terminal_response(session, prompt)
   end
 
   local lines = vim.api.nvim_buf_get_lines(session.bufnr, 0, -1, false)
-  local response_lines = {}
-  local found_user_input = false
-  local collecting = false
-  local found_prompt_after = false
-  local prompt_start = prompt:sub(1, 20)  -- First 20 chars of user's prompt
+  local prompt_start = prompt:sub(1, 20) -- First 20 chars of user's prompt
 
   -- First pass: check if Claude is still working (no prompt after response yet)
   local last_non_empty = nil
@@ -499,16 +528,31 @@ function M.get_terminal_response(session, prompt)
     return nil
   end
 
-  -- Parse terminal: find user input, then collect response until next prompt
-  for i = 1, #lines do
+  -- Find the LAST occurrence of the user's input by searching backwards
+  local user_input_line = nil
+  for i = #lines, 1, -1 do
+    local line = strip_ansi(lines[i] or '')
+    -- Look for the user's input (may be prefixed with > or ❯)
+    if line:match(vim.pesc(prompt_start)) then
+      user_input_line = i
+      break
+    end
+  end
+
+  -- If we didn't find the user input, return nil
+  if not user_input_line then
+    return nil
+  end
+
+  -- Now collect the response starting from after the user input line
+  local response_lines = {}
+  local collecting = false
+  local found_prompt_after = false
+
+  for i = user_input_line + 1, #lines do
     local line = strip_ansi(lines[i] or '')
 
-    if not found_user_input then
-      -- Look for the user's input (may be prefixed with > or ❯)
-      if line:match(vim.pesc(prompt_start)) then
-        found_user_input = true
-      end
-    elseif not collecting then
+    if not collecting then
       -- Skip empty lines right after user input, start collecting on first content
       if line:match('%S') then
         -- Skip working indicators
@@ -596,126 +640,147 @@ end
 --- @param config table Plugin configuration
 function M.start_response_monitor(session, request, config)
   local check_count = 0
-  local max_checks = 300  -- 5 minutes max (300 * 1000ms)
-  local last_line_count = -1  -- Start at -1 so first check doesn't trigger stabilization
-  local stable_count = 0  -- Count how many checks output has been stable
+  local max_checks = 300 -- 5 minutes max (300 * 1000ms)
+  local last_line_count = -1 -- Start at -1 so first check doesn't trigger stabilization
+  local stable_count = 0 -- Count how many checks output has been stable
 
   vim.notify('Monitor started for buf ' .. tostring(session.bufnr), vim.log.levels.INFO)
 
   local timer = vim.loop.new_timer()
-  timer:start(1000, 1000, vim.schedule_wrap(function()
-    check_count = check_count + 1
+  timer:start(
+    1000,
+    1000,
+    vim.schedule_wrap(function()
+      check_count = check_count + 1
 
-    -- Check if session is still valid
-    if not session or not is_valid_session(session) then
-      vim.notify('Session invalid, stopping monitor', vim.log.levels.WARN)
-      timer:stop()
-      timer:close()
-      return
-    end
+      -- Check if session is still valid
+      if not session or not is_valid_session(session) then
+        vim.notify('Session invalid, stopping monitor', vim.log.levels.WARN)
+        timer:stop()
+        timer:close()
+        return
+      end
 
-    -- Get current terminal line count - try different methods
-    local lines = vim.api.nvim_buf_get_lines(session.bufnr, 0, -1, false)
-    local current_line_count = #lines
+      -- Get current terminal line count - try different methods
+      local lines = vim.api.nvim_buf_get_lines(session.bufnr, 0, -1, false)
+      local current_line_count = #lines
 
-    -- On first check, dump buffer info
-    if check_count == 1 then
-      vim.notify(string.format('Buffer %d: type=%s, lines=%d',
-        session.bufnr,
-        vim.api.nvim_get_option_value('buftype', { buf = session.bufnr }),
-        current_line_count), vim.log.levels.INFO)
+      -- On first check, dump buffer info
+      if check_count == 1 then
+        vim.notify(
+          string.format(
+            'Buffer %d: type=%s, lines=%d',
+            session.bufnr,
+            vim.api.nvim_get_option_value('buftype', { buf = session.bufnr }),
+            current_line_count
+          ),
+          vim.log.levels.INFO
+        )
 
-      -- Find non-empty lines
-      local non_empty = 0
-      local sample_lines = {}
-      for i, line in ipairs(lines) do
-        local clean = strip_ansi(line)
-        if clean:match('%S') then
-          non_empty = non_empty + 1
-          if #sample_lines < 5 then
-            table.insert(sample_lines, string.format('[%d]: %s', i, clean:sub(1, 40)))
+        -- Find non-empty lines
+        local non_empty = 0
+        local sample_lines = {}
+        for i, line in ipairs(lines) do
+          local clean = strip_ansi(line)
+          if clean:match('%S') then
+            non_empty = non_empty + 1
+            if #sample_lines < 5 then
+              table.insert(sample_lines, string.format('[%d]: %s', i, clean:sub(1, 40)))
+            end
           end
         end
+        vim.notify(
+          string.format(
+            'Non-empty lines: %d, samples: %s',
+            non_empty,
+            table.concat(sample_lines, ' | ')
+          ),
+          vim.log.levels.INFO
+        )
       end
-      vim.notify(string.format('Non-empty lines: %d, samples: %s',
-        non_empty, table.concat(sample_lines, ' | ')), vim.log.levels.INFO)
-    end
 
-    -- Check if output has stabilized (no new lines for 2+ consecutive checks)
-    if current_line_count == last_line_count then
-      stable_count = stable_count + 1
-    else
-      stable_count = 0
-    end
-
-    last_line_count = current_line_count
-
-    -- Search for Claude's prompt anywhere in recent lines (not just the very last)
-    -- The shell prompt may appear after Claude's prompt
-    local claude_prompt_line = nil
-    local claude_prompt_idx = 0
-    local found_working = false
-
-    for i = #lines, 1, -1 do
-      local line = strip_ansi(lines[i] or '')
-      if line:match('%S') then
-        -- Check if Claude is still working (+ at start means processing)
-        if line:match('^%+') then
-          found_working = true
-          break
-        end
-        -- Check if this is Claude's prompt (just >, ❯, or ))
-        if is_claude_prompt(line) then
-          claude_prompt_line = line
-          claude_prompt_idx = i
-          break
-        end
-        -- Skip shell prompts and other lines, keep searching
+      -- Check if output has stabilized (no new lines for 2+ consecutive checks)
+      if current_line_count == last_line_count then
+        stable_count = stable_count + 1
+      else
+        stable_count = 0
       end
-    end
 
-    -- Debug: show what we found every 5 checks
-    if check_count % 5 == 0 then
-      -- Also show the last few non-empty lines for debugging
-      local debug_lines = {}
-      local count = 0
+      last_line_count = current_line_count
+
+      -- Search for Claude's prompt anywhere in recent lines (not just the very last)
+      -- The shell prompt may appear after Claude's prompt
+      local claude_prompt_line = nil
+      local claude_prompt_idx = 0
+      local found_working = false
+
       for i = #lines, 1, -1 do
         local line = strip_ansi(lines[i] or '')
-        if line:match('%S') and count < 5 then
-          table.insert(debug_lines, 1, string.format('[%d]"%s"', i, line:sub(1, 20)))
-          count = count + 1
+        if line:match('%S') then
+          -- Check if Claude is still working (+ at start means processing)
+          if line:match('^%+') then
+            found_working = true
+            break
+          end
+          -- Check if this is Claude's prompt (just >, ❯, or ))
+          if is_claude_prompt(line) then
+            claude_prompt_line = line
+            claude_prompt_idx = i
+            break
+          end
+          -- Skip shell prompts and other lines, keep searching
         end
       end
-      vim.notify(string.format('Check %d: prompt[%d]="%s" recent=%s',
-        check_count, claude_prompt_idx,
-        (claude_prompt_line or 'nil'):sub(1, 20),
-        table.concat(debug_lines, ', ')), vim.log.levels.INFO)
-    end
 
-    -- Only check for completion after output has been stable for 2 checks
-    if stable_count >= 2 and claude_prompt_line and not found_working then
-      vim.notify('Claude prompt detected: "' .. claude_prompt_line .. '"', vim.log.levels.INFO)
-      -- Claude is done, get response
-      local response = M.get_terminal_response(session, request.prompt)
-      if response then
-        vim.notify('Got response: ' .. response:sub(1, 50) .. '...', vim.log.levels.INFO)
-        M.replace_placeholder(request, response)
-      else
-        vim.notify('No response parsed from terminal', vim.log.levels.WARN)
-        M.replace_placeholder(request, '-- [No response from Claude]')
+      -- Debug: show what we found every 5 checks
+      if check_count % 5 == 0 then
+        -- Also show the last few non-empty lines for debugging
+        local debug_lines = {}
+        local count = 0
+        for i = #lines, 1, -1 do
+          local line = strip_ansi(lines[i] or '')
+          if line:match('%S') and count < 5 then
+            table.insert(debug_lines, 1, string.format('[%d]"%s"', i, line:sub(1, 20)))
+            count = count + 1
+          end
+        end
+        vim.notify(
+          string.format(
+            'Check %d: prompt[%d]="%s" recent=%s',
+            check_count,
+            claude_prompt_idx,
+            (claude_prompt_line or 'nil'):sub(1, 20),
+            table.concat(debug_lines, ', ')
+          ),
+          vim.log.levels.INFO
+        )
       end
-      timer:stop()
-      timer:close()
-      return
-    end
 
-    -- Timeout
-    if check_count >= max_checks then
-      M.replace_placeholder(request, '-- [Claude response timed out]')
-      timer:stop()
-      timer:close()
-    end
-  end))
+      -- Only check for completion after output has been stable for 2 checks
+      if stable_count >= 2 and claude_prompt_line and not found_working then
+        vim.notify('Claude prompt detected: "' .. claude_prompt_line .. '"', vim.log.levels.INFO)
+        -- Claude is done, get response
+        local response = M.get_terminal_response(session, request.prompt)
+        if response then
+          vim.notify('Got response: ' .. response:sub(1, 50) .. '...', vim.log.levels.INFO)
+          M.replace_placeholder(request, response)
+        else
+          vim.notify('No response parsed from terminal', vim.log.levels.WARN)
+          M.replace_placeholder(request, '-- [No response from Claude]')
+        end
+        timer:stop()
+        timer:close()
+        return
+      end
+
+      -- Timeout
+      if check_count >= max_checks then
+        M.replace_placeholder(request, '-- [Claude response timed out]')
+        timer:stop()
+        timer:close()
+      end
+    end)
+  )
 end
 
 --- Toggle visibility of the inline terminal

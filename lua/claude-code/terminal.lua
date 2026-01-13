@@ -105,7 +105,7 @@ local function create_float(config, existing_bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
       bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
     else
-      local buftype = vim.api.nvim_get_option_value('buftype', {buf = bufnr})
+      local buftype = vim.api.nvim_get_option_value('buftype', { buf = bufnr })
       if buftype ~= 'terminal' then
         -- Buffer exists but is no longer a terminal, create a new one
         bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
@@ -154,12 +154,12 @@ end
 --- @private
 local function configure_window_options(win_id, config)
   if config.window.hide_numbers then
-    vim.api.nvim_set_option_value('number', false, {win = win_id})
-    vim.api.nvim_set_option_value('relativenumber', false, {win = win_id})
+    vim.api.nvim_set_option_value('number', false, { win = win_id })
+    vim.api.nvim_set_option_value('relativenumber', false, { win = win_id })
   end
 
   if config.window.hide_signcolumn then
-    vim.api.nvim_set_option_value('signcolumn', 'no', {win = win_id})
+    vim.api.nvim_set_option_value('signcolumn', 'no', { win = win_id })
   end
 end
 
@@ -273,9 +273,9 @@ local function is_valid_terminal_buffer(bufnr)
 
   local buftype = nil
   pcall(function()
-    buftype = vim.api.nvim_get_option_value('buftype', {buf = bufnr})
+    buftype = vim.api.nvim_get_option_value('buftype', { buf = bufnr })
   end)
-  
+
   local terminal_job_id = nil
   pcall(function()
     terminal_job_id = vim.b[bufnr].terminal_job_id
@@ -323,7 +323,7 @@ local function create_new_instance(claude_code, config, git, instance_id)
   if config.window.position == 'float' then
     -- For floating window, create buffer first with terminal
     local new_bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
-    vim.api.nvim_set_option_value('bufhidden', 'hide', {buf = new_bufnr})
+    vim.api.nvim_set_option_value('bufhidden', 'hide', { buf = new_bufnr })
 
     -- Create the floating window
     local win_id = create_float(config, new_bufnr)

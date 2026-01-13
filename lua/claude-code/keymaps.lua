@@ -114,7 +114,11 @@ function M.register_keymaps(claude_code, config)
         if config.inline.keymaps.toggle_terminal then
           which_key.add {
             mode = 'n',
-            { config.inline.keymaps.toggle_terminal, desc = 'Claude Code: Toggle Inline Terminal', icon = '🤖' },
+            {
+              config.inline.keymaps.toggle_terminal,
+              desc = 'Claude Code: Toggle Inline Terminal',
+              icon = '🤖',
+            },
           }
         end
       end
