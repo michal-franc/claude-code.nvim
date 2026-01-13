@@ -27,10 +27,15 @@ M.ns_id = vim.api.nvim_create_namespace('claude_code_inline')
 --- @field bufnr number Buffer where placeholder was inserted
 --- @field extmark_id number Extmark ID tracking the placeholder position
 --- @field prompt string The original prompt sent to Claude
+--- @field spinner_timer userdata|nil Timer for spinner animation
+--- @field spinner_frame number Current spinner frame index
 M.pending_requests = {}
 
---- Placeholder text shown while waiting for Claude
+--- Placeholder text shown while waiting for Claude (fallback)
 M.placeholder_text = '-- [Claude is thinking...]'
+
+--- Active spinner configuration (set during prompt)
+M.active_spinner_config = nil
 
 --- Strip ANSI escape codes from a string
 --- @param str string The string to strip
@@ -307,27 +312,98 @@ end
 
 --- Insert placeholder at current cursor position and track with extmark
 --- @param prompt string The prompt being sent to Claude
+--- @param config table|nil Plugin configuration (for spinner settings)
 --- @return InlineRequest|nil request The request info or nil on failure
-function M.insert_placeholder(prompt)
+function M.insert_placeholder(prompt, config)
   local bufnr = vim.api.nvim_get_current_buf()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local row = cursor[1] - 1 -- 0-indexed
 
-  -- Insert placeholder text on a new line below cursor
-  vim.api.nvim_buf_set_lines(bufnr, row + 1, row + 1, false, { M.placeholder_text })
+  -- Get spinner config (use defaults if not provided)
+  local spinner_config = config and config.inline and config.inline.spinner
+    or {
+      frames = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' },
+      interval = 80,
+      text = 'Claude is thinking...',
+    }
 
-  -- Create extmark to track the placeholder position
-  local extmark_id = vim.api.nvim_buf_set_extmark(bufnr, M.ns_id, row + 1, 0, {})
+  -- Insert an empty line (placeholder will be shown as virtual text)
+  vim.api.nvim_buf_set_lines(bufnr, row + 1, row + 1, false, { '' })
+
+  -- Create extmark with virtual text showing initial spinner frame
+  local initial_text = spinner_config.frames[1] .. ' ' .. spinner_config.text
+  local extmark_id = vim.api.nvim_buf_set_extmark(bufnr, M.ns_id, row + 1, 0, {
+    virt_text = { { initial_text, 'Comment' } },
+    virt_text_pos = 'overlay',
+  })
 
   local request = {
     bufnr = bufnr,
     extmark_id = extmark_id,
     prompt = prompt,
+    spinner_timer = nil,
+    spinner_frame = 1,
   }
 
-  table.insert(M.pending_requests, request)
+  -- Start spinner animation timer
+  local timer = vim.loop.new_timer()
+  request.spinner_timer = timer
 
-  vim.notify('Sending to Claude...', vim.log.levels.INFO)
+  -- Helper to safely stop the timer
+  local function stop_timer()
+    if request.spinner_timer then
+      local t = request.spinner_timer
+      request.spinner_timer = nil -- Clear reference first to prevent double-close
+      pcall(function()
+        if t:is_active() then
+          t:stop()
+        end
+        if not t:is_closing() then
+          t:close()
+        end
+      end)
+    end
+  end
+
+  timer:start(
+    spinner_config.interval,
+    spinner_config.interval,
+    vim.schedule_wrap(function()
+      -- Check if timer was already stopped
+      if not request.spinner_timer then
+        return
+      end
+
+      -- Check if buffer still exists
+      if not vim.api.nvim_buf_is_valid(request.bufnr) then
+        stop_timer()
+        return
+      end
+
+      -- Get current extmark position
+      local extmark =
+        vim.api.nvim_buf_get_extmark_by_id(request.bufnr, M.ns_id, request.extmark_id, {})
+      if not extmark or #extmark == 0 then
+        stop_timer()
+        return
+      end
+
+      -- Advance to next frame
+      request.spinner_frame = (request.spinner_frame % #spinner_config.frames) + 1
+      local spinner_text = spinner_config.frames[request.spinner_frame]
+        .. ' '
+        .. spinner_config.text
+
+      -- Update extmark with new spinner frame
+      vim.api.nvim_buf_set_extmark(request.bufnr, M.ns_id, extmark[1], 0, {
+        id = request.extmark_id,
+        virt_text = { { spinner_text, 'Comment' } },
+        virt_text_pos = 'overlay',
+      })
+    end)
+  )
+
+  table.insert(M.pending_requests, request)
 
   return request
 end
@@ -606,6 +682,20 @@ function M.replace_placeholder(request, response)
     return
   end
 
+  -- Stop spinner timer if running (safely)
+  if request.spinner_timer then
+    local timer = request.spinner_timer
+    request.spinner_timer = nil -- Clear reference first to prevent double-close
+    pcall(function()
+      if timer:is_active() then
+        timer:stop()
+      end
+      if not timer:is_closing() then
+        timer:close()
+      end
+    end)
+  end
+
   -- Get current position from extmark
   local extmark = vim.api.nvim_buf_get_extmark_by_id(request.bufnr, M.ns_id, request.extmark_id, {})
   if not extmark or #extmark == 0 then
@@ -614,10 +704,10 @@ function M.replace_placeholder(request, response)
 
   local row = extmark[1]
 
-  -- Get the current line at extmark position
+  -- Get the current line at extmark position (should be empty line with virtual text)
   local current_lines = vim.api.nvim_buf_get_lines(request.bufnr, row, row + 1, false)
-  if #current_lines > 0 and current_lines[1] == M.placeholder_text then
-    -- Replace placeholder with response
+  -- Replace the line (empty or placeholder text) with response
+  if #current_lines > 0 and (current_lines[1] == '' or current_lines[1] == M.placeholder_text) then
     local response_lines = vim.split(response, '\n')
     vim.api.nvim_buf_set_lines(request.bufnr, row, row + 1, false, response_lines)
   end
@@ -644,8 +734,6 @@ function M.start_response_monitor(session, request, config)
   local last_line_count = -1 -- Start at -1 so first check doesn't trigger stabilization
   local stable_count = 0 -- Count how many checks output has been stable
 
-  vim.notify('Monitor started for buf ' .. tostring(session.bufnr), vim.log.levels.INFO)
-
   local timer = vim.loop.new_timer()
   timer:start(
     1000,
@@ -655,49 +743,14 @@ function M.start_response_monitor(session, request, config)
 
       -- Check if session is still valid
       if not session or not is_valid_session(session) then
-        vim.notify('Session invalid, stopping monitor', vim.log.levels.WARN)
         timer:stop()
         timer:close()
         return
       end
 
-      -- Get current terminal line count - try different methods
+      -- Get current terminal line count
       local lines = vim.api.nvim_buf_get_lines(session.bufnr, 0, -1, false)
       local current_line_count = #lines
-
-      -- On first check, dump buffer info
-      if check_count == 1 then
-        vim.notify(
-          string.format(
-            'Buffer %d: type=%s, lines=%d',
-            session.bufnr,
-            vim.api.nvim_get_option_value('buftype', { buf = session.bufnr }),
-            current_line_count
-          ),
-          vim.log.levels.INFO
-        )
-
-        -- Find non-empty lines
-        local non_empty = 0
-        local sample_lines = {}
-        for i, line in ipairs(lines) do
-          local clean = strip_ansi(line)
-          if clean:match('%S') then
-            non_empty = non_empty + 1
-            if #sample_lines < 5 then
-              table.insert(sample_lines, string.format('[%d]: %s', i, clean:sub(1, 40)))
-            end
-          end
-        end
-        vim.notify(
-          string.format(
-            'Non-empty lines: %d, samples: %s',
-            non_empty,
-            table.concat(sample_lines, ' | ')
-          ),
-          vim.log.levels.INFO
-        )
-      end
 
       -- Check if output has stabilized (no new lines for 2+ consecutive checks)
       if current_line_count == last_line_count then
@@ -711,7 +764,6 @@ function M.start_response_monitor(session, request, config)
       -- Search for Claude's prompt anywhere in recent lines (not just the very last)
       -- The shell prompt may appear after Claude's prompt
       local claude_prompt_line = nil
-      local claude_prompt_idx = 0
       local found_working = false
 
       for i = #lines, 1, -1 do
@@ -725,47 +777,19 @@ function M.start_response_monitor(session, request, config)
           -- Check if this is Claude's prompt (just >, ❯, or ))
           if is_claude_prompt(line) then
             claude_prompt_line = line
-            claude_prompt_idx = i
             break
           end
           -- Skip shell prompts and other lines, keep searching
         end
       end
 
-      -- Debug: show what we found every 5 checks
-      if check_count % 5 == 0 then
-        -- Also show the last few non-empty lines for debugging
-        local debug_lines = {}
-        local count = 0
-        for i = #lines, 1, -1 do
-          local line = strip_ansi(lines[i] or '')
-          if line:match('%S') and count < 5 then
-            table.insert(debug_lines, 1, string.format('[%d]"%s"', i, line:sub(1, 20)))
-            count = count + 1
-          end
-        end
-        vim.notify(
-          string.format(
-            'Check %d: prompt[%d]="%s" recent=%s',
-            check_count,
-            claude_prompt_idx,
-            (claude_prompt_line or 'nil'):sub(1, 20),
-            table.concat(debug_lines, ', ')
-          ),
-          vim.log.levels.INFO
-        )
-      end
-
       -- Only check for completion after output has been stable for 2 checks
       if stable_count >= 2 and claude_prompt_line and not found_working then
-        vim.notify('Claude prompt detected: "' .. claude_prompt_line .. '"', vim.log.levels.INFO)
         -- Claude is done, get response
         local response = M.get_terminal_response(session, request.prompt)
         if response then
-          vim.notify('Got response: ' .. response:sub(1, 50) .. '...', vim.log.levels.INFO)
           M.replace_placeholder(request, response)
         else
-          vim.notify('No response parsed from terminal', vim.log.levels.WARN)
           M.replace_placeholder(request, '-- [No response from Claude]')
         end
         timer:stop()
@@ -834,7 +858,7 @@ function M.open_prompt(claude_code, config, git)
     end
 
     -- Insert placeholder at cursor position (tracked with extmark)
-    local request = M.insert_placeholder(input)
+    local request = M.insert_placeholder(input, config)
     if not request then
       vim.notify('Failed to insert placeholder', vim.log.levels.ERROR)
       return
@@ -899,12 +923,27 @@ function M.clear_session(claude_code, config, git)
 
     M.sessions[instance_id] = nil
   end
-
-  vim.notify('Inline session cleared', vim.log.levels.INFO)
 end
 
 --- Clean up all inline sessions
 function M.cleanup()
+  -- Stop all spinner timers for pending requests (safely)
+  for _, request in ipairs(M.pending_requests) do
+    if request.spinner_timer then
+      local timer = request.spinner_timer
+      request.spinner_timer = nil
+      pcall(function()
+        if timer:is_active() then
+          timer:stop()
+        end
+        if not timer:is_closing() then
+          timer:close()
+        end
+      end)
+    end
+  end
+  M.pending_requests = {}
+
   for instance_id, session in pairs(M.sessions) do
     if session then
       -- Hide terminal if visible

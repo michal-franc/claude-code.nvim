@@ -68,6 +68,10 @@ local M = {}
 -- @field keymaps.toggle_terminal string|boolean Keymap to toggle terminal visibility
 -- @field prompt_title string Title for the input dialog
 -- @field startup_delay number Delay in ms before sending first prompt
+-- @field spinner table Spinner configuration for thinking indicator
+-- @field spinner.frames table Array of spinner frame characters
+-- @field spinner.interval number Interval in ms between spinner frames
+-- @field spinner.text string Text to show after spinner
 
 --- ClaudeCodeConfig class for main configuration
 -- @table ClaudeCodeConfig
@@ -153,6 +157,11 @@ M.default_config = {
     },
     prompt_title = 'Claude Code', -- Title for the input dialog
     startup_delay = 1000, -- Delay in ms before sending first prompt (Claude CLI needs time to initialize)
+    spinner = {
+      frames = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' }, -- Braille spinner frames
+      interval = 80, -- Interval in ms between spinner frames
+      text = 'Claude is thinking...', -- Text to show after spinner
+    },
   },
 }
 
@@ -436,6 +445,23 @@ local function validate_inline_config(inline)
 
   if type(inline.startup_delay) ~= 'number' or inline.startup_delay < 0 then
     return false, 'inline.startup_delay must be a non-negative number'
+  end
+
+  -- Validate spinner configuration
+  if type(inline.spinner) ~= 'table' then
+    return false, 'inline.spinner must be a table'
+  end
+
+  if type(inline.spinner.frames) ~= 'table' or #inline.spinner.frames == 0 then
+    return false, 'inline.spinner.frames must be a non-empty array'
+  end
+
+  if type(inline.spinner.interval) ~= 'number' or inline.spinner.interval <= 0 then
+    return false, 'inline.spinner.interval must be a positive number'
+  end
+
+  if type(inline.spinner.text) ~= 'string' then
+    return false, 'inline.spinner.text must be a string'
   end
 
   return true, nil

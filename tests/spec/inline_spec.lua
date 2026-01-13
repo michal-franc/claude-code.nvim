@@ -271,4 +271,145 @@ describe('inline', function()
       assert.are.equal('Hello!', response)
     end)
   end)
+
+  describe('spinner timer', function()
+    local test_bufnr
+
+    before_each(function()
+      test_bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(test_bufnr, 0, -1, false, { 'line 1', 'line 2' })
+    end)
+
+    after_each(function()
+      if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
+        vim.api.nvim_buf_delete(test_bufnr, { force = true })
+      end
+      -- Clean up any pending requests
+      inline.pending_requests = {}
+    end)
+
+    it('should not error when replace_placeholder is called multiple times (race condition)', function()
+      -- Switch to test buffer
+      vim.api.nvim_set_current_buf(test_bufnr)
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+      -- Create a placeholder with spinner
+      local request = inline.insert_placeholder('test prompt', {
+        inline = {
+          spinner = {
+            frames = { '⠋', '⠙', '⠹' },
+            interval = 50,
+            text = 'Testing...',
+          },
+        },
+      })
+
+      assert.is_not_nil(request)
+      assert.is_not_nil(request.spinner_timer)
+
+      -- Call replace_placeholder multiple times in quick succession
+      -- This simulates the race condition where callbacks might still be pending
+      local success = true
+      local err_msg = nil
+
+      for i = 1, 3 do
+        local ok, err = pcall(function()
+          inline.replace_placeholder(request, 'Response ' .. i)
+        end)
+        if not ok then
+          success = false
+          err_msg = err
+          break
+        end
+      end
+
+      assert.is_true(success, 'replace_placeholder should not error: ' .. (err_msg or ''))
+      assert.is_nil(request.spinner_timer, 'spinner_timer should be nil after replace')
+    end)
+
+    it('should safely stop timer when buffer is deleted', function()
+      -- Switch to test buffer
+      vim.api.nvim_set_current_buf(test_bufnr)
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+      -- Create a placeholder with spinner
+      local request = inline.insert_placeholder('test prompt', {
+        inline = {
+          spinner = {
+            frames = { '⠋', '⠙', '⠹' },
+            interval = 50,
+            text = 'Testing...',
+          },
+        },
+      })
+
+      assert.is_not_nil(request)
+      assert.is_not_nil(request.spinner_timer)
+
+      -- Delete the buffer while spinner is running
+      local ok, err = pcall(function()
+        vim.api.nvim_buf_delete(test_bufnr, { force = true })
+      end)
+
+      assert.is_true(ok, 'Buffer deletion should not error: ' .. (err or ''))
+      test_bufnr = nil -- Mark as deleted so after_each doesn't try again
+
+      -- Give the timer a chance to fire and handle the deleted buffer
+      vim.wait(100, function()
+        return false
+      end)
+
+      -- Cleanup should not error
+      ok, err = pcall(function()
+        inline.replace_placeholder(request, 'Response')
+      end)
+      assert.is_true(ok, 'replace_placeholder after buffer delete should not error: ' .. (err or ''))
+    end)
+
+    it('should handle cleanup with multiple pending timers', function()
+      -- Create multiple buffers and placeholders
+      local buffers = {}
+      local requests = {}
+
+      for i = 1, 3 do
+        local buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'line 1' })
+        vim.api.nvim_set_current_buf(buf)
+        vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+        local req = inline.insert_placeholder('prompt ' .. i, {
+          inline = {
+            spinner = {
+              frames = { '⠋', '⠙' },
+              interval = 50,
+              text = 'Test',
+            },
+          },
+        })
+
+        table.insert(buffers, buf)
+        table.insert(requests, req)
+      end
+
+      -- Verify all timers are running
+      for _, req in ipairs(requests) do
+        assert.is_not_nil(req.spinner_timer)
+      end
+
+      -- Cleanup should not error
+      local ok, err = pcall(function()
+        inline.cleanup()
+      end)
+
+      assert.is_true(ok, 'cleanup should not error: ' .. (err or ''))
+      assert.are.equal(0, #inline.pending_requests, 'pending_requests should be empty after cleanup')
+
+      -- Clean up buffers
+      for _, buf in ipairs(buffers) do
+        if vim.api.nvim_buf_is_valid(buf) then
+          vim.api.nvim_buf_delete(buf, { force = true })
+        end
+      end
+    end)
+  end)
 end)
