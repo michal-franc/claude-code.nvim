@@ -36,6 +36,7 @@ This plugin was built entirely with Claude Code in a Neovim terminal, and then i
 - 📋 Type annotations with LuaCATS for better IDE support
 - ✅ Configuration validation to prevent errors
 - 🧪 Testing framework for reliability (44 comprehensive tests)
+- ✏️ Inline editing: send prompts to Claude from any buffer with visual selection support
 
 ## Requirements
 
@@ -148,7 +149,15 @@ require("claude-code").setup({
     },
     window_navigation = true, -- Enable window navigation keymaps (<C-h/j/k/l>)
     scrolling = true,         -- Enable scrolling keymaps (<C-f/b>) for page up/down
-  }
+  },
+  -- Inline editing settings
+  inline = {
+    enable = true,              -- Enable inline editing feature
+    keymaps = {
+      prompt = '<leader>ci',    -- Normal/Visual mode keymap to open prompt dialog
+      toggle_terminal = '<leader>ct', -- Normal mode keymap to toggle terminal visibility
+    },
+  },
 })
 ```
 
@@ -230,6 +239,66 @@ require("claude-code").setup({
   },
 })
 ```
+
+### Inline Editing
+
+Inline editing allows you to send prompts to Claude directly from any buffer. The response is inserted at your cursor position, wrapped in a code block.
+
+#### Setup
+
+```lua
+require("claude-code").setup({
+  window = {
+    position = "float",
+    float = {
+      width = "90%",
+      height = "90%",
+      row = "center",
+      col = "center",
+      relative = "editor",
+      border = "double",
+    },
+  },
+  inline = {
+    enable = true,
+    keymaps = {
+      prompt = '<A-c>i',           -- Alt+c then i: Open prompt dialog
+      toggle_terminal = '<A-c>t',  -- Alt+c then t: Toggle terminal visibility
+    },
+  },
+})
+```
+
+#### How it works
+
+1. **Normal mode**: Press the prompt keymap (e.g., `<leader>ci`) to open a prompt dialog. Enter your request and Claude's response will be inserted below your cursor.
+
+2. **Visual mode**: Select text with `v`, `V` (line-wise), or `Ctrl-V` (block), then press the same keymap. Your selection is sent as context along with your prompt.
+
+3. **Animated spinner**: While Claude is thinking, an animated braille spinner (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) shows progress.
+
+4. **Response format**: Claude's response is wrapped in a code block:
+   ````
+   ```Claude
+   Response text here...
+   ```
+   ````
+
+#### Commands
+
+- `:ClaudeCodeInline` - Open inline prompt (normal mode)
+- `:ClaudeCodeInlineVisual` - Open inline prompt with visual selection
+- `:ClaudeCodeInlineToggle` - Toggle the hidden terminal visibility
+- `:ClaudeCodeInlineClear` - Clear the inline session
+
+#### Visual Selection Modes
+
+All visual modes are supported:
+- `v` - Character-wise: select specific characters
+- `V` - Line-wise: select entire lines
+- `Ctrl-V` - Block-wise: select a rectangular block
+
+The selected text is included in the prompt sent to Claude with context about the file being edited.
 
 ## How it Works
 
