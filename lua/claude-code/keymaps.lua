@@ -55,11 +55,20 @@ function M.register_keymaps(claude_code, config)
   -- Register inline editing keymaps if enabled
   if config.inline and config.inline.enable then
     if config.inline.keymaps and config.inline.keymaps.prompt then
+      -- Normal mode mapping
       vim.api.nvim_set_keymap(
         'n',
         config.inline.keymaps.prompt,
         [[<cmd>ClaudeCodeInline<CR>]],
         vim.tbl_extend('force', map_opts, { desc = 'Claude Code: Inline Prompt' })
+      )
+
+      -- Visual mode mapping - uses selection (x covers v, V, and Ctrl-V)
+      vim.api.nvim_set_keymap(
+        'x',
+        config.inline.keymaps.prompt,
+        [[<cmd>ClaudeCodeInlineVisual<CR>]],
+        vim.tbl_extend('force', map_opts, { desc = 'Claude Code: Inline Prompt with Selection' })
       )
     end
 
@@ -109,6 +118,14 @@ function M.register_keymaps(claude_code, config)
           which_key.add {
             mode = 'n',
             { config.inline.keymaps.prompt, desc = 'Claude Code: Inline Prompt', icon = '🤖' },
+          }
+          which_key.add {
+            mode = 'x',
+            {
+              config.inline.keymaps.prompt,
+              desc = 'Claude Code: Inline Prompt with Selection',
+              icon = '🤖',
+            },
           }
         end
         if config.inline.keymaps.toggle_terminal then

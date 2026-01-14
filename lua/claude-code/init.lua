@@ -108,8 +108,9 @@ M.version = version
 M.inline = inline
 
 --- Open the inline prompt dialog
-function M.inline_prompt()
-  inline.open_prompt(M, M.config, git)
+--- @param opts table|nil Optional parameters (e.g., { visual = true } for visual mode)
+function M.inline_prompt(opts)
+  inline.open_prompt(M, M.config, git, opts)
 end
 
 --- Toggle the inline terminal visibility

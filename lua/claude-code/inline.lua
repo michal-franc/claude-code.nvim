@@ -584,6 +584,92 @@ function M.format_response(response)
   return '```Claude\n' .. response .. '\n```'
 end
 
+--- Extract selection from lines based on visual mode type
+--- @param lines table Array of lines
+--- @param start_col number Start column (1-indexed)
+--- @param end_col number End column (1-indexed)
+--- @param mode string Visual mode type: 'v', 'V', or '\22' (Ctrl-V)
+--- @return string selection The extracted selection text
+local function extract_selection(lines, start_col, end_col, mode)
+  if #lines == 0 then
+    return ''
+  end
+
+  -- Make a copy to avoid modifying original
+  local result = {}
+  for i, line in ipairs(lines) do
+    result[i] = line
+  end
+
+  if mode == 'v' then
+    -- Character-wise visual mode
+    if #result == 1 then
+      result[1] = string.sub(result[1], start_col, end_col)
+    else
+      result[1] = string.sub(result[1], start_col)
+      result[#result] = string.sub(result[#result], 1, end_col)
+    end
+  elseif mode == 'V' then
+    -- Line-wise visual mode - keep full lines (no modification needed)
+  elseif mode == '\22' then
+    -- Block visual mode (Ctrl-V)
+    for i, line in ipairs(result) do
+      result[i] = string.sub(line, start_col, end_col)
+    end
+  end
+
+  return table.concat(result, '\n')
+end
+
+--- Get the current visual selection
+--- @return string|nil selection The selected text or nil if no selection
+function M.get_visual_selection()
+  -- Get the visual selection marks
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos = vim.fn.getpos("'>")
+
+  local start_line = start_pos[2]
+  local start_col = start_pos[3]
+  local end_line = end_pos[2]
+  local end_col = end_pos[3]
+
+  -- Check if valid selection
+  if start_line == 0 or end_line == 0 then
+    return nil
+  end
+
+  -- Get the lines
+  local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
+  if #lines == 0 then
+    return nil
+  end
+
+  -- Handle visual mode type
+  local mode = vim.fn.visualmode()
+  return extract_selection(lines, start_col, end_col, mode)
+end
+
+--- Build prompt with context for Claude
+--- @param user_request string The user's request/command
+--- @param selection string|nil The selected text or nil
+--- @param filepath string The file path being edited
+--- @return string prompt The formatted prompt
+function M.build_prompt(user_request, selection, filepath)
+  local template = [[You are an assistant helping a user in nvim.
+IMPORTANT: Only respond with text. Do NOT write to or modify any files.
+Your response will be inserted into the document by the plugin.
+You may read the file "%s" for context if needed.
+
+File being edited: %s
+
+Selected text: %s
+
+User request: %s]]
+
+  local selection_text = selection or 'none'
+  return string.format(template, filepath, filepath, selection_text, user_request)
+end
+
 --- Get response from terminal buffer
 --- @param session InlineSession The inline session
 --- @param prompt string The original prompt to help locate the response
@@ -839,12 +925,21 @@ end
 --- @param claude_code table Main plugin module
 --- @param config table Plugin configuration
 --- @param git table Git module
-function M.open_prompt(claude_code, config, git)
+--- @param opts table|nil Optional parameters (e.g., { visual = true } for visual mode)
+function M.open_prompt(claude_code, config, git, opts)
+  opts = opts or {}
   local session = M.get_or_create_session(claude_code, config, git)
 
   -- Save cursor position and buffer info before opening input dialog
   local source_bufnr = vim.api.nvim_get_current_buf()
   local source_cursor = vim.api.nvim_win_get_cursor(0)
+  local source_filepath = vim.api.nvim_buf_get_name(source_bufnr)
+
+  -- Capture visual selection BEFORE opening input dialog (marks get cleared)
+  local visual_selection = nil
+  if opts.visual then
+    visual_selection = M.get_visual_selection()
+  end
 
   vim.ui.input({
     prompt = config.inline.prompt_title .. ': ',
@@ -864,7 +959,11 @@ function M.open_prompt(claude_code, config, git)
       pcall(vim.api.nvim_win_set_cursor, 0, source_cursor)
     end
 
+    -- Build the full prompt with context
+    local full_prompt = M.build_prompt(input, visual_selection, source_filepath)
+
     -- Insert placeholder at cursor position (tracked with extmark)
+    -- Show user's request as the placeholder context, not the full prompt
     local request = M.insert_placeholder(input, config)
     if not request then
       vim.notify('Failed to insert placeholder', vim.log.levels.ERROR)
@@ -873,7 +972,7 @@ function M.open_prompt(claude_code, config, git)
 
     -- Function to send and monitor
     local function send_and_monitor()
-      local success = M.send_to_terminal(session, input, config)
+      local success = M.send_to_terminal(session, full_prompt, config)
       if success then
         -- Start monitoring for response
         M.start_response_monitor(session, request, config)
@@ -999,6 +1098,7 @@ M._internal = {
   is_claude_prompt = is_claude_prompt,
   is_working_indicator = is_working_indicator,
   is_terminal_artifact = is_terminal_artifact,
+  extract_selection = extract_selection,
 }
 
 return M

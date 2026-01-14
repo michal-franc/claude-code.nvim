@@ -41,6 +41,10 @@ function M.register_commands(claude_code)
       claude_code.inline_prompt()
     end, { desc = 'Open Claude Code inline prompt' })
 
+    vim.api.nvim_create_user_command('ClaudeCodeInlineVisual', function()
+      claude_code.inline_prompt({ visual = true })
+    end, { desc = 'Open Claude Code inline prompt with visual selection', range = true })
+
     vim.api.nvim_create_user_command('ClaudeCodeInlineToggle', function()
       claude_code.inline_toggle()
     end, { desc = 'Toggle Claude Code inline terminal visibility' })

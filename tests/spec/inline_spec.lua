@@ -272,6 +272,128 @@ describe('inline', function()
     end)
   end)
 
+  describe('_internal.extract_selection', function()
+    it('should extract character-wise selection on single line (v mode)', function()
+      local lines = { 'Hello World' }
+      local result = inline._internal.extract_selection(lines, 7, 11, 'v')
+      assert.are.equal('World', result)
+    end)
+
+    it('should extract character-wise selection across multiple lines (v mode)', function()
+      local lines = { 'First line here', 'Second line', 'Third line end' }
+      -- Select from column 7 of first line to column 5 of last line
+      local result = inline._internal.extract_selection(lines, 7, 5, 'v')
+      assert.are.equal('line here\nSecond line\nThird', result)
+    end)
+
+    it('should extract full lines for line-wise selection (V mode)', function()
+      local lines = { 'First line', 'Second line', 'Third line' }
+      -- In V mode, columns don't matter - full lines are returned
+      local result = inline._internal.extract_selection(lines, 1, 100, 'V')
+      assert.are.equal('First line\nSecond line\nThird line', result)
+    end)
+
+    it('should extract single full line for line-wise selection (V mode)', function()
+      local lines = { 'Only this line' }
+      local result = inline._internal.extract_selection(lines, 1, 100, 'V')
+      assert.are.equal('Only this line', result)
+    end)
+
+    it('should extract block selection (Ctrl-V mode)', function()
+      local lines = { 'AAABBBCCC', 'DDDEEEFFF', 'GGGHHHIII' }
+      -- Select columns 4-6 (BBB, EEE, HHH)
+      local result = inline._internal.extract_selection(lines, 4, 6, '\22')
+      assert.are.equal('BBB\nEEE\nHHH', result)
+    end)
+
+    it('should handle empty lines array', function()
+      local result = inline._internal.extract_selection({}, 1, 10, 'v')
+      assert.are.equal('', result)
+    end)
+
+    it('should not modify original lines array', function()
+      local lines = { 'Hello World' }
+      inline._internal.extract_selection(lines, 7, 11, 'v')
+      assert.are.equal('Hello World', lines[1])
+    end)
+  end)
+
+  describe('build_prompt', function()
+    it('should build prompt with selection', function()
+      local prompt = inline.build_prompt('make it shorter', 'Hello World', '/path/to/file.lua')
+
+      assert.is_truthy(prompt:match('You are an assistant helping a user in nvim'))
+      assert.is_truthy(prompt:match('File being edited: /path/to/file.lua'))
+      assert.is_truthy(prompt:match('Selected text: Hello World'))
+      assert.is_truthy(prompt:match('User request: make it shorter'))
+    end)
+
+    it('should build prompt without selection', function()
+      local prompt = inline.build_prompt('write hello world', nil, '/path/to/file.lua')
+
+      assert.is_truthy(prompt:match('Selected text: none'))
+      assert.is_truthy(prompt:match('User request: write hello world'))
+    end)
+
+    it('should handle multiline selection', function()
+      local selection = 'line 1\nline 2\nline 3'
+      local prompt = inline.build_prompt('refactor this', selection, '/path/to/file.lua')
+
+      assert.is_truthy(prompt:match('line 1\nline 2\nline 3'))
+    end)
+
+    it('should include important instructions', function()
+      local prompt = inline.build_prompt('test', 'code', '/file.lua')
+
+      assert.is_truthy(prompt:match('IMPORTANT: Only respond with text'))
+      assert.is_truthy(prompt:match('Do NOT write to or modify any files'))
+      assert.is_truthy(prompt:match('Your response will be inserted into the document'))
+    end)
+  end)
+
+  describe('visual selection integration', function()
+    it('should build correct prompt with character-wise selection', function()
+      -- Simulate v mode selection of "World" from "Hello World"
+      local lines = { 'Hello World' }
+      local selection = inline._internal.extract_selection(lines, 7, 11, 'v')
+      local prompt = inline.build_prompt('translate to French', selection, '/test.txt')
+
+      assert.are.equal('World', selection)
+      assert.is_truthy(prompt:match('Selected text: World'))
+      assert.is_truthy(prompt:match('User request: translate to French'))
+    end)
+
+    it('should build correct prompt with line-wise selection', function()
+      -- Simulate V mode selection of multiple lines
+      local lines = { 'function hello()', '  print("Hello")', 'end' }
+      local selection = inline._internal.extract_selection(lines, 1, 100, 'V')
+      local prompt = inline.build_prompt('add documentation', selection, '/code.lua')
+
+      assert.is_truthy(selection:match('function hello'))
+      assert.is_truthy(selection:match('print'))
+      assert.is_truthy(selection:match('end'))
+      assert.is_truthy(prompt:match('User request: add documentation'))
+    end)
+
+    it('should build correct prompt with block selection', function()
+      -- Simulate Ctrl-V block selection
+      local lines = { 'name: John', 'name: Jane', 'name: Jack' }
+      local selection = inline._internal.extract_selection(lines, 7, 10, '\22')
+      local prompt = inline.build_prompt('make uppercase', selection, '/data.txt')
+
+      assert.are.equal('John\nJane\nJack', selection)
+      assert.is_truthy(prompt:match('Selected text: John\nJane\nJack'))
+    end)
+
+    it('should build correct prompt without selection (normal mode)', function()
+      local prompt = inline.build_prompt('write a hello function', nil, '/new.lua')
+
+      assert.is_truthy(prompt:match('Selected text: none'))
+      assert.is_truthy(prompt:match('User request: write a hello function'))
+      assert.is_truthy(prompt:match('File being edited: /new.lua'))
+    end)
+  end)
+
   describe('format_response', function()
     it('should wrap response in Claude code block', function()
       local response = 'Hello! How can I help you today?'
